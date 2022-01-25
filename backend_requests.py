@@ -122,7 +122,7 @@ def searchban(screen_name):
     #     returnjson["profile"]["has_tweets"] = True
 
     returnjson["tests"] = {
-    "search": True,
+    "search": True,    ## Search ban
     "typeahead": True, ## suggest ban
     "ghost": {"ban": False},
     "more_replies": {"ban": False, "tweet": "-1", "in_reply_to": "-1"}
@@ -144,11 +144,19 @@ def searchban(screen_name):
     search_tweets = search_v2["globalObjects"]["tweets"]
     if search_tweets == {}:
         returnjson["tests"]["search"] = False
-        returnjson["tests"]["typeahead"] = False
-        return returnjson
+        # returnjson["tests"]["typeahead"] = False
     else:
-        return returnjson
-    print(search_v2)
+        returnjson["tests"]["search"] = True
+
+    
+    suggestions = twitter_b.get("https://api.twitter.com/1.1/search/typeahead.json?src=search_box&result_type=users&q=@" + screen_name)
+    try:
+        returnjson["tests"]["typeahead"] = len([1 for user in suggestions["users"] if user["screen_name"].lower() == screen_name.lower()]) > 0
+    except:
+        returnjson["tests"]["typeahead"] = False
+
+
+    return returnjson
 
 
 app.run(debug=False, port=os.environ.get("PORT", 5000), host="0.0.0.0")
