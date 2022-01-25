@@ -149,7 +149,7 @@ def searchban(screen_name):
         returnjson["tests"]["search"] = True
 
     
-    suggestions = twitter_b.get("https://api.twitter.com/1.1/search/typeahead.json?src=search_box&result_type=users&q=@" + screen_name)
+    suggestions = twitter_b.get("https://api.twitter.com/1.1/search/typeahead.json?src=search_box&result_type=users&q=@" + screen_name).json()
     try:
         returnjson["tests"]["typeahead"] = len([1 for user in suggestions["users"] if user["screen_name"].lower() == screen_name.lower()]) > 0
     except:
