@@ -3,12 +3,15 @@ from flask_cors import CORS
 from requests_oauthlib import OAuth1Session, OAuth2Session
 import os
 import time
+import json
+from get_graphql_endpoint import endpoint
 
 app = Flask(__name__)
 CORS(app)
 
 TWITTER_AUTH_KEY = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA'
 
+ENDPOINT = endpoint()
 
 @app.route('/{screen_name}')
 def shadowban(screen_name):
@@ -124,7 +127,7 @@ def searchban(screen_name):
     returnjson["tests"] = {
     "search": True,    ## Search ban
     "typeahead": True, ## suggest ban
-    "ghost": {"ban": False},
+    "ghost": {"ban": None},
     "more_replies": {"ban": False, "tweet": "-1", "in_reply_to": "-1"}
 }
 
@@ -155,8 +158,125 @@ def searchban(screen_name):
     except:
         returnjson["tests"]["typeahead"] = False
 
+    ## get replies
+    ## Start GraphQL
+
+    guest_session = twitter_b.post("https://api.twitter.com/1.1/guest/activate.json")
+
+    twitter_b.headers["x-guest-token"] = guest_session.json()["guest_token"]
+
+    user_id = returnjson["profile"]["id"]
+
+    reply = None
+
+    print(user_id)
+
+    get_reply_vars = { "count": 700, "userId": user_id,
+            "includePromotedContent": False, "withSuperFollowsUserFields": False, "withBirdwatchPivots": False,
+            "withDownvotePerspective": False, "withReactionsMetadata": False,
+             "withReactionsPerspective": False, "withSuperFollowsTweetFields": False, "withVoice": False, "withV2Timeline": False, "__fs_interactive_text": False, "__fs_responsive_web_uc_gql_enabled": False, "__fs_dont_mention_me_view_api_enabled": False}
+    get_reply_param = param = {"variables": json.dumps(get_reply_vars)}
+    replies = twitter_b.get("https://twitter.com/i/api/graphql/{}/{}".format(ENDPOINT["UserTweetsAndReplies"], "UserTweetsAndReplies"), params=get_reply_param)
+    # print(replies.text)
+    
+
+    try:
+        maindata = replies.json()["data"]["user"]["result"]["timeline"]["timeline"]["instructions"]
+        for d in maindata:
+            if d["type"] == "TimelineAddEntries":
+                for ent in d["entries"]:
+                    if ent["entryId"].startswith("tweet"):
+                        tmp = ent["content"]["itemContent"]["tweet_results"]["result"]["legacy"]
+                        if "in_reply_to_status_id_str" in tmp:
+                            reply = tmp
+                            # print("Found a reply!", tmp["full_text"])
+                            break
+        tweet_detail_vars = {
+            "focalTweetId":reply["in_reply_to_status_id_str"],
+            "includePromotedContent":False,
+            "withBirdwatchNotes":False,
+            "withSuperFollowsUserFields":False,
+            "withDownvotePerspective":False,
+            "withReactionsMetadata":False,
+            "withReactionsPerspective":False,
+            "withSuperFollowsTweetFields":False,
+            "withVoice":False,
+            "__fs_interactive_text":False,
+            "__fs_responsive_web_uc_gql_enabled":False,
+            "__fs_dont_mention_me_view_api_enabled":False
+        }
+        tweetdetails = twitter_b.get("https://twitter.com/i/api/graphql/{}/{}".format(ENDPOINT["TweetDetail"], "TweetDetail"), params={"variables": json.dumps(tweet_detail_vars)})
+
+        insts = tweetdetails.json()["data"]["threaded_conversation_with_injections"]["instructions"]
+
+        showmore = False
+
+        for inst in insts:
+            
+            if inst["type"] == "TimelineAddEntries":
+                for ent in inst["entries"]:
+                    print(ent["entryId"])
+                    if ent["entryId"].startswith("conversationthread"):
+                        ghostban = True
+                        for item in ent["content"]["items"]:
+                           
+                            if "tweet_results" in item["item"]["itemContent"] and item["item"]["itemContent"]["tweet_results"]["result"]["legacy"]["user_id_str"] == user_id:
+                                
+                                returnjson["tests"]["ghost"] = {"ban": False}
+                                ghostban = False
+                                break
+                        if ghostban:
+                            print("Hello")
+                            returnjson["tests"]["ghost"] = {"ban": True}
+
+                    if ent["entryId"].startswith("cursor-bottom"):
+                        print("hi")
+                        returnjson["tests"]["ghost"] = {}
+                        returnjson["tests"]["more_replies"] = {}
+                        break
+
+                    if ent["entryId"].startswith("cursor-showmorethreadsprompt"):
+                        showmore = True
+                        cursor_vars = tweet_detail_vars
+                        cursor_vars["cursor"] = ent["content"]["itemContent"]["value"]
+                        cursor = twitter_b.get("https://twitter.com/i/api/graphql/{}/{}".format(ENDPOINT["TweetDetail"], "TweetDetail"), params={"variables": json.dumps(cursor_vars)})
+
+                        cursor_insts = cursor.json()["data"]["threaded_conversation_with_injections"]["instructions"]
+                        for c_i in cursor_insts:
+                            if c_i["type"] == "TimelineAddEntries":
+                                if len(c_i["entries"]) == 0:
+                                    returnjson["tests"]["more_replies"] = {"ban": True}
+                                    break
+                                for c_ent in c_i["entries"]:
+                                    if c_ent["entryId"].startswith("conversationthread"):
+                                        more = True
+                                        print("more")
+                                        for c_item in c_ent["content"]["items"]:
+                                            if c_item["item"]["itemContent"]["tweet_results"]["result"]["legacy"]["user_id_str"] == user_id:
+                                                
+                                                returnjson["tests"]["ghost"] = {"ban": False}
+                                                returnjson["tests"]["more_replies"] = {"ban": True, "tweet":reply["id_str"], "in_reply_to": c_item["item"]["itemContent"]["tweet_results"]["result"]["legacy"]["id_str"]}
+                                                more = False
+                                                break
+                                        if more:
+                                            returnjson["tests"]["ghost"] = {"ban": True}
+                                            returnjson["tests"]["more_replies"] = {"ban": True}
+        if not showmore:
+            returnjson["tests"]["more_replies"] = {
+}
+    except KeyError as e:
+        print(Exception.with_traceback(e)) 
+        returnjson["tests"]["ghost"] = {}
+        returnjson["tests"]["more_replies"] = {}
+
+
+    print("ban" in returnjson["tests"]["more_replies"])
+    print("ban" in returnjson["tests"]["ghost"])
+    print(returnjson["tests"]["ghost"])
+    if "ban" not in returnjson["tests"]["more_replies"] and "ban" in returnjson["tests"]["ghost"] and returnjson["tests"]["ghost"]["ban"] == False:
+        returnjson["tests"]["more_replies"] == {"ban": False}
 
     return returnjson
 
 
-app.run(debug=False, port=os.environ.get("PORT", 5000), host="0.0.0.0")
+app.run(debug=True, port=os.environ.get("PORT", 5000), host="0.0.0.0")
