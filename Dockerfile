@@ -1,8 +1,13 @@
-FROM python:3.5.7-slim-buster
+FROM python:3
+RUN mkdir -p /app
 
-RUN mkdir /app
-WORKDIR /app
-ADD requirements.txt /app/
-ADD . /app
+RUN apt-get update && apt-get upgrade -y
+RUN pip install --upgrade pip
 
-RUN pip3 install --no-cache-dir -r ./requirements.txt
+COPY ./requirements.txt /app
+COPY ./backend_requests.py /app
+COPY ./uwsgi.ini /app
+
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+CMD ["uwsgi", "--ini", "/app/uwsgi.ini"]
