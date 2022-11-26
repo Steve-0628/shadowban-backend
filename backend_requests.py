@@ -265,7 +265,7 @@ def searchban(screen_name):
             returnjson["tests"]["more_replies"] = {
 }
     except KeyError as e:
-        print(Exception.with_traceback(e)) 
+        # print(Exception.with_traceback(e)) 
         returnjson["tests"]["ghost"] = {}
         returnjson["tests"]["more_replies"] = {}
 
