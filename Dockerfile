@@ -5,6 +5,7 @@ RUN apt-get update && apt-get upgrade -y
 RUN pip install --upgrade pip
 
 COPY ./requirements.txt /app
+COPY ./get_graphql_endpoint.py /app
 COPY ./backend_requests.py /app
 COPY ./uwsgi.ini /app
 
