@@ -20,15 +20,50 @@ ENDPOINT = endpoint()
 
 twitter_list = [] # {"session": OAuth2Session, "params": {""}}
 
+class TwitterSession:
+    def __init__(self):
+        self.guesttoken = None
+        self.locked = False
+        self.session = None
+        self.headers = None
+        self.initsession()
+
+    def initsession(self):
+        self.session = OAuth2Session()
+        self.session.headers["Authorization"] = "Bearer {}".format(TWITTER_AUTH_KEY)
+        self.guesttoken = self.session.post("https://api.twitter.com/1.1/guest/activate.json").json()["guest_token"]
+        self.session.headers["X-Guest-Token"] = self.guesttoken
+
+    
+    def get(self, url, params={}):
+        r = self.session.get(url, params=params)
+        self.headers = r.headers
+        return r
+
+
+    def release(self):
+        self.locked = False
+        # limit = self.headers.get('x-rate-limit-limit', None)
+        remaining = self.headers.get('x-rate-limit-remaining', None)
+        # reset = self.headers.get('x-rate-limit-reset', None)
+        if int(remaining) < 50:
+            initsession()
+
+
 def get_session():
-    t = OAuth2Session()
-    t.headers["Authorization"] = "Bearer {}".format(TWITTER_AUTH_KEY)
-    guesttoken = t.post("https://api.twitter.com/1.1/guest/activate.json").json()["guest_token"]
-    t.headers["X-Guest-Token"] = guesttoken
+    num = None
+    for i in range(0, len(twitter_list)):
+        if not twitter_list[i].locked:
+            num = i
+            twitter_list[i].locked = True
+    if num == None:
+        num = len(twitter_list)
+        twitter_list.append(TwitterSession())
 
-    return t
+    return num
 
-
+def release_session(num):
+    twitter_list[num].release()
 
 
 @app.route("/<screen_name>")
@@ -56,7 +91,8 @@ def searchban(screen_name):
     # twitter = OAuth1Session(TWITTER_IPHONE_CK, TWITTER_IPHONE_CS)
     # twitter_b = OAuth2Session()
     # twitter_b.headers["Authorization"] = "Bearer {}".format(TWITTER_AUTH_KEY)
-    twitter_b = get_session()
+    SESSION_NUM = get_session()
+    twitter_b = twitter_list[SESSION_NUM]
 
     # check rate limit
     # response = twitter_b.get("https://api.twitter.com/1.1/application/rate_limit_status.json")
@@ -104,6 +140,7 @@ def searchban(screen_name):
 
     if len(usertl_json) == 0:
         returnjson["profile"]["has_tweets"] = False
+        release_session(SESSION_NUM)
         return returnjson
 
     returnjson["profile"]["has_tweets"] = True
@@ -115,14 +152,17 @@ def searchban(screen_name):
         # returnjson["profile"]["protected"] = usertl_json["protected"]
     elif usertl.status_code == 403:
         returnjson["profile"]["suspended"] = True
+        release_session(SESSION_NUM)
         return returnjson
     else:
         if "error" in usertl_json and usertl_json["error"] == "Not authorized.":
             returnjson["profile"]["protected"] = True
             returnjson["profile"]["suspended"] = True
             returnjson["profile"]["has_tweets"] = False
+            release_session(SESSION_NUM)
             return returnjson
         returnjson["profile"]["error"] = usertl_json
+        release_session(SESSION_NUM)
         return returnjson
 
     # if usertl_json["protected"] == True:
@@ -172,9 +212,9 @@ def searchban(screen_name):
     ## get replies
     ## Start GraphQL
 
-    guest_session = twitter_b.post("https://api.twitter.com/1.1/guest/activate.json")
+    # guest_session = twitter_b.post("https://api.twitter.com/1.1/guest/activate.json")
 
-    twitter_b.headers["x-guest-token"] = guest_session.json()["guest_token"]
+    # twitter_b.headers["x-guest-token"] = guest_session.json()["guest_token"]
 
     user_id = returnjson["profile"]["id"]
 
@@ -287,6 +327,7 @@ def searchban(screen_name):
     if "ban" not in returnjson["tests"]["more_replies"] and "ban" in returnjson["tests"]["ghost"] and returnjson["tests"]["ghost"]["ban"] == False:
         returnjson["tests"]["more_replies"] == {"ban": False}
 
+    release_session(SESSION_NUM)
     return returnjson
 
 
