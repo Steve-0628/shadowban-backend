@@ -13,10 +13,20 @@ TWITTER_AUTH_KEY = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%
 
 ENDPOINT = endpoint()
 
-@app.route('/{screen_name}')
-def shadowban(screen_name):
-    # DO IT
-    pass
+# @app.route('/{screen_name}')
+# def shadowban(screen_name):
+#     # DO IT
+#     pass
+
+twitter_list = [] # {"session": OAuth2Session, "params": {""}}
+
+def get_session():
+    t = OAuth2Session()
+    t.headers["Authorization"] = "Bearer {}".format(TWITTER_AUTH_KEY)
+    guesttoken = t.post("https://api.twitter.com/1.1/guest/activate.json").json()["guest_token"]
+    t.headers["X-Guest-Token"] = guesttoken
+
+    return t
 
 
 
@@ -44,8 +54,9 @@ def searchban(screen_name):
 
     
     # twitter = OAuth1Session(TWITTER_IPHONE_CK, TWITTER_IPHONE_CS)
-    twitter_b = OAuth2Session()
-    twitter_b.headers["Authorization"] = "Bearer {}".format(TWITTER_AUTH_KEY)
+    # twitter_b = OAuth2Session()
+    # twitter_b.headers["Authorization"] = "Bearer {}".format(TWITTER_AUTH_KEY)
+    twitter_b = get_session()
 
     # check rate limit
     # response = twitter_b.get("https://api.twitter.com/1.1/application/rate_limit_status.json")
@@ -125,11 +136,11 @@ def searchban(screen_name):
     #     returnjson["profile"]["has_tweets"] = True
 
     returnjson["tests"] = {
-    "search": True,    ## Search ban
-    "typeahead": True, ## suggest ban
-    "ghost": {"ban": None},
-    "more_replies": {"ban": False, "tweet": "-1", "in_reply_to": "-1"}
-}
+        "search": True,    ## Search ban
+        "typeahead": True, ## suggest ban
+        "ghost": {"ban": None},
+        "more_replies": {"ban": False, "tweet": "-1", "in_reply_to": "-1"}
+    }
 
     # searchurl = "https://api.twitter.com/1.1/users/search.json"
     # params = {"q": "from:@{}".format(screen_name), "count": 1}
@@ -263,7 +274,7 @@ def searchban(screen_name):
                                             returnjson["tests"]["more_replies"] = {"ban": True}
         if not showmore:
             returnjson["tests"]["more_replies"] = {
-}
+    }
     except KeyError as e:
         # print(Exception.with_traceback(e)) 
         returnjson["tests"]["ghost"] = {}
