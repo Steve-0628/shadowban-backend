@@ -47,7 +47,7 @@ class TwitterSession:
         remaining = self.headers.get('x-rate-limit-remaining', None)
         # reset = self.headers.get('x-rate-limit-reset', None)
         if int(remaining) < 50:
-            initsession()
+            self.initsession()
 
 
 def get_session():
